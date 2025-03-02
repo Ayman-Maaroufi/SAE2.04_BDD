@@ -3,7 +3,7 @@
 import os
 from flask import Flask, request, render_template, redirect, url_for, abort, flash, session, g
 from flask import Blueprint
-
+# SAE Livrable 2
 from controllers.auth_security import *
 from controllers.client_article import *
 from controllers.client_coordonnee import client_coordonnee
