@@ -1,0 +1,34 @@
+<form method="post" action="/client/panier/filtre" style="display: inline-block">
+    <div class="form-group">
+        <input name="filter_word" type="text" placeholder="Recherche" size="10" class="form-control"
+               value="{{ session.get('filter_word', '') }}">
+    </div>
+    {% if items_filtre is defined %}
+    <div class="form-group">
+        <h4>Types articles</h4>
+        {% for item_filtre in items_filtre %}
+        <input type="checkbox" name="filter_types" value="{{ item_filtre.id_type_cle_usb }}"
+               {% if session.get('filter_types') and (item_filtre.id_type_cle_usb|string in session['filter_types']) %}
+                   checked
+               {% endif %}
+            >  {{ item_filtre.libelle_type_cle_usb }}
+            <br/>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="form-group">
+        <h5>Prix :</h5>
+         <input name="filter_prix_min" type="text" placeholder="min" size="3"
+                value="{{ session.get('filter_prix_min', '') }}">
+
+       <input name="filter_prix_max" type="text" placeholder="max" size="3"
+              value="{{ session.get('filter_prix_max', '') }}">
+    </div>
+    <button type="submit" class="btn btn-primary" style="display: inline-block;">Filtrer</button>
+</form>
+{% if session.get('filter_word') or session.get('filter_prix_max') or session.get('filter_prix_min') or session.get('filter_types') %}
+<form action="/client/panier/filtre/suppr" style="display: inline-block; margin: 5px;" method="post">
+    <button class="btn btn-primary">Supprimer filtre</button>
+</form>
+{% endif %}

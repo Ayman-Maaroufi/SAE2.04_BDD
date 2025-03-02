@@ -1,0 +1,59 @@
+{% extends 'admin/layout_admin.html' %}
+{% block title %}
+    <title>Modifier un article</title>
+{% endblock %}
+
+{% block body %}
+    <h2>Modifier un article</h2>
+    <div class="row mt-5">
+        {% if article.image is not none %}
+            <img class="card-img-top rounded mx-4 d-block" style="width:200px; height:200px; border: 1px solid black; padding: 25px;" id="img_output" src="{{ url_for('static', filename = 'images/') }}{{ article.image }}" alt="image de {{ article.nom }}">
+        {% else %}
+            <img class="card-img-top rounded mx-4 d-block" style="width:200px; height:200px; border: 1px solid black; padding: 25px;" id="img_output" src="{{ url_for('static', filename = 'images/no_photo.jpeg') }}" alt="Pas d'image">
+        {% endif %}
+        <div class="w-25">
+            <form class="w-190" method="post" action="{{ url_for('admin_article.valid_edit_article') }}" enctype="multipart/form-data">
+                <input type="hidden" value="{{ article.id_article }}" name="id_article">
+                <label for="nom">Nom :
+                    <input name="nom" type="text" value="{{ article.nom }}" class="form-control">
+                </label>
+                <label for="prix">Prix (€) :
+                    <input name="prix" type="number" min="0.0" step="0.01" value="{{ article.prix }}" class="form-control">
+                </label>
+                <label for="stock">Stock :
+                    <input name="stock" type="number" min="0" step="1" value="{{ article.stock }}" class="form-control">
+                </label>
+                <label for="image">Image :
+                    <input name="image" onchange="previewImage(event)" type="file" class="form-control" value="{{ article.image }}">
+                </label>
+                <label for="type_article_id">Type de l'article :
+                    <select name="type_article_id" class="form-select">
+                        {% for type in types_article %}
+                            <option value="{{ type.id_type_article }}" {% if type.id_type_article == article.type_article_id %} selected {% endif %}>{{ type.libelle }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label for="description">Description :
+                    <input name="description" type="text" value="{{ article.description }}" class="form-control">
+                    <small class="text-muted">Note : La fonctionnalité de description n'est pas encore implémentée.</small>
+                </label>
+                <button class="btn btn-primary mt-2">
+                    Modifier
+                </button>
+                <a class="btn btn-secondary mt-2" href="{{ url_for('admin_article.show_article') }}" role="button">Retour</a>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function previewImage(event) {
+            var reader = new FileReader();
+            reader.onload = function(){
+                var output = document.getElementById('img_output');
+                output.src = reader.result;
+            };
+            reader.readAsDataURL(event.target.files[0]);
+        }
+    </script>
+{% endblock %}
+
