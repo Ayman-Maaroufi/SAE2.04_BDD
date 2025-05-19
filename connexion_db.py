@@ -1,17 +1,13 @@
 import pymysql
-from flask import g
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
+from flask import g, current_app
 
 def get_db():
     if 'db' not in g:
         g.db = pymysql.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DB'),
+            host=current_app.config['MYSQL_HOST'],
+            user=current_app.config['MYSQL_USER'],
+            password=current_app.config['MYSQL_PASSWORD'],
+            database=current_app.config['MYSQL_DB'],
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )

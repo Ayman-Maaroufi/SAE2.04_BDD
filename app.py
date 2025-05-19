@@ -18,19 +18,25 @@ from controllers.admin_dataviz import *
 from controllers.admin_declinaison_article import *
 from controllers.admin_type_article import *
 
-from dotenv import load_dotenv
-
 from controllers.fixtures_load import fixtures_load
 
 app = Flask(__name__)
 app.secret_key = 'une cle(token) : grain de sel(any random string)'
 
-load_dotenv(".env")
-app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST')
-app.config['MYSQL_USER'] = os.getenv('MYSQL_USER')
-app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD')
-app.config['MYSQL_DB'] = os.getenv('MYSQL_DB')
+# Configuration directe de la base de données (sans .env)
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_USER'] = 'amaarou3'
+app.config['MYSQL_PASSWORD'] = 'mdp'
+app.config['MYSQL_DB'] = 'BDD_amaarou3'
 
+# Enregistrement des teardown pour fermer les connexions à la base de données
+@app.teardown_appcontext
+def close_connection(exception):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+# Enregistrement des blueprints
 app.register_blueprint(auth_security)
 app.register_blueprint(client_article)
 app.register_blueprint(client_commande)

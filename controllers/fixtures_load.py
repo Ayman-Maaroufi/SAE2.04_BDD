@@ -9,12 +9,19 @@ from werkzeug.security import generate_password_hash
 fixtures_load = Blueprint('fixtures_load', __name__,
                           template_folder='templates')
 
+
 @fixtures_load.route('/base/init')
 def fct_fixtures_load():
     mycursor = get_db().cursor()
 
-    sql = '''DROP TABLE IF EXISTS utilisateur, type_cle_usb, etat, cle_usb, commande, ligne_commande, ligne_panier, adresse, liste_envies, historique, declinaison, commentaire'''
+    # Désactiver les vérifications de clés étrangères
+    mycursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+
+    sql = '''DROP TABLE IF EXISTS utilisateur, type_cle_usb, etat, cle_usb, commande, ligne_commande, ligne_panier, adresse, liste_envies, historique, declinaison, commentaire, declinaison_article'''
     mycursor.execute(sql)
+
+    # Réactiver les vérifications de clés étrangères
+    mycursor.execute("SET FOREIGN_KEY_CHECKS = 1")
 
     sql = '''
     CREATE TABLE utilisateur(
@@ -190,6 +197,7 @@ def fct_fixtures_load():
        date_publication DATETIME,
        commentaire VARCHAR(255),
        valider INT,
+       note INT,
        PRIMARY KEY(utilisateur_id, cle_usb_id, date_publication),
        FOREIGN KEY(utilisateur_id) REFERENCES utilisateur(id_utilisateur),
        FOREIGN KEY(cle_usb_id) REFERENCES cle_usb(id_cle_usb)
@@ -236,10 +244,10 @@ def fct_fixtures_load():
     mycursor.execute(sql, [item for sublist in cles_usb_data for item in sublist])
 
     sql = '''
-    INSERT INTO commentaire (utilisateur_id, cle_usb_id, date_publication, commentaire, valider) VALUES
-        (2, 1, '2024-01-01 10:00:00', 'Excellente capacité de stockage, je recommande !', 1),
-        (3, 2, '2024-01-02 11:30:00', 'Transfert rapide, design élégant', 1),
-        (2, 3, '2024-01-03 14:15:00', 'Bon rapport qualité-prix, mais un peu fragile', 0);
+    INSERT INTO commentaire (utilisateur_id, cle_usb_id, date_publication, commentaire, valider, note) VALUES
+        (2, 1, '2024-01-01 10:00:00', 'Com 1 !', 1, 5),
+        (3, 2, '2024-01-02 11:30:00', 'Com 2', 1, 4),
+        (2, 3, '2024-01-03 14:15:00', 'Com 3', 0, 3);
     '''
     mycursor.execute(sql)
 

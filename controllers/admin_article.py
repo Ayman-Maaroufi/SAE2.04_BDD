@@ -1,10 +1,10 @@
 #! /usr/bin/python
 # -*- coding:utf-8 -*-
-import os
-from random import random
-
 from flask import Blueprint
-from flask import Flask, request, render_template, redirect, abort, flash, session, url_for
+from flask import Flask, request, render_template, redirect, url_for, abort, flash, session, g
+import os
+from werkzeug.utils import secure_filename
+import datetime
 
 from connexion_db import get_db
 
@@ -15,24 +15,48 @@ admin_article = Blueprint('admin_article', __name__,
 @admin_article.route('/admin/article/show')
 def show_article():
     mycursor = get_db().cursor()
+
+    # Récupérer les articles avec leurs informations de base
     sql = '''
-    SELECT c.id_cle_usb AS id_article, c.nom_cle_usb AS nom, c.prix_cle_usb AS prix, 
-           c.stock, c.photo_url AS image, t.libelle_type_cle_usb AS libelle, 
-           t.id_type_cle_usb AS type_article_id
+    SELECT c.id_cle_usb as id_article, 
+           c.nom_cle_usb as nom, 
+           c.prix_cle_usb as prix, 
+           c.stock, 
+           c.description, 
+           c.photo_url as image, 
+           t.libelle_type_cle_usb as libelle,
+           t.id_type_cle_usb as type_article_id
     FROM cle_usb c
     LEFT JOIN type_cle_usb t ON c.type_cle_usb_id = t.id_type_cle_usb
-    ORDER BY c.id_cle_usb DESC
+    ORDER BY nom_cle_usb
     '''
     mycursor.execute(sql)
     articles = mycursor.fetchall()
 
-    print(f"Nombre d'articles récupérés : {len(articles)}")
+    # Pour chaque article, récupérer le nombre d'avis
     for article in articles:
-        article['nb_commentaires_nouveaux'] = 0
-        article['nb_declinaisons'] = 1
-        article['prix'] = float(article['prix']) if article['prix'] is not None else 0.0
-        article['stock'] = int(article['stock']) if article['stock'] is not None else 0
-        print(f"Article : {article}")
+        # Nombre total de commentaires
+        sql_avis = '''
+        SELECT COUNT(*) as nb_commentaires_total
+        FROM commentaire
+        WHERE cle_usb_id = %s
+        '''
+        mycursor.execute(sql_avis, (article['id_article'],))
+        result = mycursor.fetchone()
+        article['nb_commentaires_total'] = result['nb_commentaires_total'] if result else 0
+
+        # Nombre de commentaires non lus
+        sql_non_lus = '''
+        SELECT COUNT(*) as nb_commentaires_nouveaux
+        FROM commentaire
+        WHERE cle_usb_id = %s AND valider = 0 AND utilisateur_id != 1
+        '''
+        mycursor.execute(sql_non_lus, (article['id_article'],))
+        result = mycursor.fetchone()
+        article['nb_commentaires_nouveaux'] = result['nb_commentaires_nouveaux'] if result else 0
+
+        # Nombre de déclinaisons (si nécessaire)
+        article['nb_declinaisons'] = 0  # Valeur par défaut
 
     return render_template('admin/article/show_article.html', articles=articles)
 
@@ -41,131 +65,123 @@ def show_article():
 def add_article():
     mycursor = get_db().cursor()
     sql = '''
-    SELECT id_type_cle_usb AS id_type_article, libelle_type_cle_usb AS libelle
+    SELECT id_type_cle_usb as id_type_article, libelle_type_cle_usb as libelle
     FROM type_cle_usb
     ORDER BY libelle_type_cle_usb
     '''
     mycursor.execute(sql)
     types_article = mycursor.fetchall()
 
-    print("Types d'articles récupérés :", types_article)
-
-    return render_template('admin/article/add_article.html',
-                           types_article=types_article)
+    return render_template('admin/article/add_article.html', types_article=types_article)
 
 
 @admin_article.route('/admin/article/add', methods=['POST'])
 def valid_add_article():
     mycursor = get_db().cursor()
-    nom = request.form.get('nom', '').strip()
-    prix = request.form.get('prix', '')
-    stock = request.form.get('stock', '')
+    nom = request.form.get('nom', '')
     type_article_id = request.form.get('type_article_id', '')
-    image = request.files.get('image')
+    prix = request.form.get('prix', '')
+    stock = request.form.get('stock', '0')  # Valeur par défaut 0
+    description = request.form.get('description', '')
 
-    print(f"Données reçues : nom={nom}, prix={prix}, stock={stock}, type_article_id={type_article_id}")
+    # Gestion de l'image
+    image = ""
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and file.filename != '':
+            # Pour simplifier, nous utilisons juste le nom du fichier
+            image = secure_filename(file.filename)
 
-    try:
-        prix = float(prix) if prix else 0
-        stock = int(stock) if stock else 0
-        type_article_id = int(type_article_id) if type_article_id else None
-    except ValueError:
-        flash(u'Veuillez entrer des valeurs numériques valides pour le prix et le stock', 'error')
+    # Validation des données
+    if not nom:
+        flash(u'Erreur: Le nom de l\'article est obligatoire', 'alert-danger')
         return redirect(url_for('admin_article.add_article'))
 
-    if image:
-        filename = 'img_upload' + str(int(2147483647 * random())) + '.png'
-        image.save(os.path.join('static/images/', filename))
-        print(f"Image sauvegardée : {filename}")
-    else:
-        filename = None
-        print("Pas d'image fournie")
+    if not type_article_id:
+        flash(u'Erreur: Le type d\'article est obligatoire', 'alert-danger')
+        return redirect(url_for('admin_article.add_article'))
+
+    # Conversion des valeurs numériques
+    try:
+        type_article_id = int(type_article_id)
+        prix = float(prix) if prix else 0
+        stock = int(stock) if stock else 0
+    except ValueError:
+        flash(u'Erreur: Valeurs numériques invalides', 'alert-danger')
+        return redirect(url_for('admin_article.add_article'))
 
     sql = '''
-    INSERT INTO cle_usb (nom_cle_usb, prix_cle_usb, stock, photo_url, type_cle_usb_id)
-    VALUES (%s, %s, %s, %s, %s)
+    INSERT INTO cle_usb (nom_cle_usb, prix_cle_usb, stock, description, photo_url, type_cle_usb_id)
+    VALUES (%s, %s, %s, %s, %s, %s)
     '''
-    tuple_add = (nom, prix, stock, filename, type_article_id)
-    print(f"SQL : {sql}")
-    print(f"Données à insérer : {tuple_add}")
+    tuple_add = (nom, prix, stock, description, image, type_article_id)
 
     try:
         mycursor.execute(sql, tuple_add)
         get_db().commit()
-        print("Insertion réussie, transaction validée")
-        flash(u'Article ajouté', 'success')
+        message = u'Article ajouté, nom: ' + nom + ', prix: ' + str(prix) + ' €'
+        flash(message, 'alert-success')
     except Exception as e:
-        get_db().rollback()
-        print(f"Erreur lors de l'insertion : {str(e)}")
-        flash(f'Erreur lors de l\'ajout de l\'article : {str(e)}', 'error')
-        return redirect(url_for('admin_article.add_article'))
+        flash(u'Erreur lors de l\'ajout de l\'article: ' + str(e), 'alert-danger')
 
     return redirect(url_for('admin_article.show_article'))
 
 
-@admin_article.route('/admin/article/delete', methods=['GET'])
-def delete_article():
-    id_article = request.args.get('id_article', '')
+@admin_article.route('/admin/article/delete/<int:id_article>', methods=['GET'])
+def delete_article(id_article):
     mycursor = get_db().cursor()
 
-    sql_check = '''
-    SELECT COUNT(*) as nb_lignes
-    FROM ligne_commande
-    WHERE cle_usb_id = %s
-    '''
-    mycursor.execute(sql_check, (id_article,))
-    result = mycursor.fetchone()
+    # Vérifier si l'article existe
+    sql = "SELECT nom_cle_usb FROM cle_usb WHERE id_cle_usb = %s"
+    mycursor.execute(sql, (id_article,))
+    article = mycursor.fetchone()
 
-    if result['nb_lignes'] > 0:
-        flash(u'Impossible de supprimer cet article car il est associé à des commandes', 'warning')
-    else:
-        sql_image = '''
-        SELECT photo_url
-        FROM cle_usb
-        WHERE id_cle_usb = %s
-        '''
-        mycursor.execute(sql_image, (id_article,))
-        image = mycursor.fetchone()['photo_url']
+    if article is None:
+        flash(u'Article non trouvé', 'alert-danger')
+        return redirect(url_for('admin_article.show_article'))
 
-        sql_delete = '''
-        DELETE FROM cle_usb
-        WHERE id_cle_usb = %s
-        '''
-        mycursor.execute(sql_delete, (id_article,))
+    try:
+        # Supprimer les commentaires associés à l'article
+        sql_delete_commentaires = "DELETE FROM commentaire WHERE cle_usb_id = %s"
+        mycursor.execute(sql_delete_commentaires, (id_article,))
+
+        # Supprimer l'article
+        sql_delete_article = "DELETE FROM cle_usb WHERE id_cle_usb = %s"
+        mycursor.execute(sql_delete_article, (id_article,))
         get_db().commit()
 
-        if image and os.path.exists(os.path.join('static/images/', image)):
-            os.remove(os.path.join('static/images/', image))
-
-        flash(u'Article supprimé', 'success')
+        flash(u'Article supprimé, nom: ' + article['nom_cle_usb'], 'alert-success')
+    except Exception as e:
+        flash(u'Erreur lors de la suppression de l\'article: ' + str(e), 'alert-danger')
 
     return redirect(url_for('admin_article.show_article'))
 
 
-@admin_article.route('/admin/article/edit', methods=['GET'])
-def edit_article():
-    id_article = request.args.get('id_article', '')
+@admin_article.route('/admin/article/edit/<int:id_article>', methods=['GET'])
+def edit_article(id_article):
     mycursor = get_db().cursor()
+
     sql = '''
-    SELECT id_cle_usb AS id_article, nom_cle_usb AS nom, prix_cle_usb AS prix, stock, 
-           photo_url AS image, type_cle_usb_id AS type_article_id
+    SELECT id_cle_usb as id_article, nom_cle_usb as nom, prix_cle_usb as prix, stock, description, photo_url as image, type_cle_usb_id as id_type_article
     FROM cle_usb
     WHERE id_cle_usb = %s
     '''
     mycursor.execute(sql, (id_article,))
     article = mycursor.fetchone()
 
+    if article is None:
+        flash(u'Article non trouvé', 'alert-danger')
+        return redirect(url_for('admin_article.show_article'))
+
     sql = '''
-    SELECT id_type_cle_usb AS id_type_article, libelle_type_cle_usb AS libelle
+    SELECT id_type_cle_usb as id_type_article, libelle_type_cle_usb as libelle
     FROM type_cle_usb
     ORDER BY libelle_type_cle_usb
     '''
     mycursor.execute(sql)
     types_article = mycursor.fetchall()
 
-    return render_template('admin/article/edit_article.html',
-                           article=article,
-                           types_article=types_article)
+    return render_template('admin/article/edit_article.html', article=article, types_article=types_article)
 
 
 @admin_article.route('/admin/article/edit', methods=['POST'])
@@ -173,143 +189,171 @@ def valid_edit_article():
     mycursor = get_db().cursor()
     id_article = request.form.get('id_article', '')
     nom = request.form.get('nom', '')
-    prix = request.form.get('prix', '')
-    stock = request.form.get('stock', '')
     type_article_id = request.form.get('type_article_id', '')
-    image = request.files.get('image')
+    prix = request.form.get('prix', '')
+    stock = request.form.get('stock', '0')
+    description = request.form.get('description', '')
 
-    try:
-        prix = float(prix) if prix else 0
-        stock = int(stock) if stock else 0
-        type_article_id = int(type_article_id) if type_article_id else None
-    except ValueError:
-        flash(u'Veuillez entrer des valeurs numériques valides pour le prix et le stock', 'error')
+    # Gestion de l'image
+    image = request.form.get('image_existing', '')  # Récupérer l'image existante si elle existe
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and file.filename != '':
+            # Pour simplifier, nous utilisons juste le nom du fichier
+            image = secure_filename(file.filename)
+
+    # Validation des données
+    if not id_article:
+        flash(u'Erreur: ID article manquant', 'alert-danger')
+        return redirect(url_for('admin_article.show_article'))
+
+    if not nom:
+        flash(u'Erreur: Le nom de l\'article est obligatoire', 'alert-danger')
         return redirect(url_for('admin_article.edit_article', id_article=id_article))
 
-    if image:
-        sql_old_image = '''
-        SELECT photo_url
-        FROM cle_usb
-        WHERE id_cle_usb = %s
-        '''
-        mycursor.execute(sql_old_image, (id_article,))
-        old_image = mycursor.fetchone()['photo_url']
-        if old_image and os.path.exists(os.path.join('static/images/', old_image)):
-            os.remove(os.path.join('static/images/', old_image))
+    if not type_article_id:
+        flash(u'Erreur: Le type d\'article est obligatoire', 'alert-danger')
+        return redirect(url_for('admin_article.edit_article', id_article=id_article))
 
-        filename = 'img_upload' + str(int(2147483647 * random())) + '.png'
-        image.save(os.path.join('static/images/', filename))
-    else:
-        filename = None
+    # Conversion des valeurs numériques
+    try:
+        id_article = int(id_article)
+        type_article_id = int(type_article_id)
+        prix = float(prix) if prix else 0
+        stock = int(stock) if stock else 0
+    except ValueError:
+        flash(u'Erreur: Valeurs numériques invalides', 'alert-danger')
+        return redirect(url_for('admin_article.edit_article', id_article=id_article))
 
     sql = '''
     UPDATE cle_usb
-    SET nom_cle_usb = %s, prix_cle_usb = %s, stock = %s, photo_url = COALESCE(%s, photo_url), 
-        type_cle_usb_id = %s
+    SET nom_cle_usb = %s, prix_cle_usb = %s, stock = %s, description = %s, photo_url = %s, type_cle_usb_id = %s
     WHERE id_cle_usb = %s
     '''
-    tuple_update = (nom, prix, stock, filename, type_article_id, id_article)
-    mycursor.execute(sql, tuple_update)
-    get_db().commit()
-    flash(u'Article modifié', 'success')
-    return redirect(url_for('admin_article.show_article'))
-
-
-@admin_article.route('/admin/declinaison_article/edit', methods=['GET'])
-def edit_declinaison_article():
-    id_declinaison_article = request.args.get('id_declinaison_article', '')
-    mycursor = get_db().cursor()
-
-    sql = '''
-    SELECT d.id_declinaison_article, d.article_id, d.stock, d.taille_id, d.couleur_id,
-           c.nom_cle_usb AS nom, c.photo_url AS image_article,
-           t.libelle AS libelle_taille, co.libelle AS libelle_couleur
-    FROM declinaison_article d
-    JOIN cle_usb c ON d.article_id = c.id_cle_usb
-    LEFT JOIN taille t ON d.taille_id = t.id_taille
-    LEFT JOIN couleur co ON d.couleur_id = co.id_couleur
-    WHERE d.id_declinaison_article = %s
-    '''
-    mycursor.execute(sql, (id_declinaison_article,))
-    declinaison_article = mycursor.fetchone()
-
-    sql_tailles = "SELECT id_taille, libelle FROM taille ORDER BY libelle"
-    mycursor.execute(sql_tailles)
-    tailles = mycursor.fetchall()
-
-    sql_couleurs = "SELECT id_couleur, libelle FROM couleur ORDER BY libelle"
-    mycursor.execute(sql_couleurs)
-    couleurs = mycursor.fetchall()
-
-    return render_template('admin/article/edit_declinaison_article.html',
-                           declinaison_article=declinaison_article,
-                           tailles=tailles,
-                           couleurs=couleurs)
-
-
-@admin_article.route('/admin/declinaison_article/edit', methods=['POST'])
-def valid_edit_declinaison_article():
-    mycursor = get_db().cursor()
-    id_declinaison_article = request.form.get('id_declinaison_article', '')
-    id_article = request.form.get('id_article', '')
-    stock = request.form.get('stock', '')
-    id_taille = request.form.get('id_taille', '')
-    id_couleur = request.form.get('id_couleur', '')
+    tuple_update = (nom, prix, stock, description, image, type_article_id, id_article)
 
     try:
-        stock = int(stock) if stock else 0
-        id_taille = int(id_taille) if id_taille else None
-        id_couleur = int(id_couleur) if id_couleur else None
-    except ValueError:
-        flash(u'Veuillez entrer des valeurs numériques valides', 'error')
-        return redirect(
-            url_for('admin_article.edit_declinaison_article', id_declinaison_article=id_declinaison_article))
-
-    sql = '''
-    UPDATE declinaison_article
-    SET stock = %s, taille_id = %s, couleur_id = %s
-    WHERE id_declinaison_article = %s
-    '''
-    tuple_update = (stock, id_taille, id_couleur, id_declinaison_article)
-    mycursor.execute(sql, tuple_update)
-    get_db().commit()
-    flash(u'Déclinaison d\'article modifiée', 'success')
-    return redirect(url_for('admin_article.edit_article', id_article=id_article))
-
-
-@admin_article.route('/admin/article/commentaires')
-def show_commentaires():
-    id_article = request.args.get('id_article', '')
-    return "Fonctionnalité non implémentée"
-
-
-@admin_article.route('/admin/article/recreate_demo', methods=['GET'])
-def recreate_demo_articles():
-    mycursor = get_db().cursor()
-
-    sql_check = "SELECT COUNT(*) as count FROM cle_usb"
-    mycursor.execute(sql_check)
-    result = mycursor.fetchone()
-
-    if result['count'] == 0:
-        demo_articles = [
-            ("USB 3.0 16GB", 19.99, 100, "usb_16gb.jpg", 1),
-            ("USB-C 32GB", 29.99, 75, "usb_c_32gb.jpg", 2),
-            ("USB 3.1 64GB", 39.99, 50, "usb_64gb.jpg", 1)
-        ]
-
-        sql_insert = '''
-        INSERT INTO cle_usb (nom_cle_usb, prix_cle_usb, stock, photo_url, type_cle_usb_id)
-        VALUES (%s, %s, %s, %s, %s)
-        '''
-
-        for article in demo_articles:
-            mycursor.execute(sql_insert, article)
-
+        mycursor.execute(sql, tuple_update)
         get_db().commit()
-        flash(u'Articles de démonstration recréés', 'success')
-    else:
-        flash(u'Des articles existent déjà dans la base de données', 'info')
+        flash(u'Article modifié, nom: ' + nom + ', prix: ' + str(prix) + ' €', 'alert-success')
+    except Exception as e:
+        flash(u'Erreur lors de la modification de l\'article: ' + str(e), 'alert-danger')
 
     return redirect(url_for('admin_article.show_article'))
 
+
+# Alias pour la route show_commentaires (utilisée dans le template)
+@admin_article.route('/admin/article/commentaires/<int:id_article>', methods=['GET'])
+def show_commentaires(id_article):
+    return show_article_commentaires(id_article)
+
+
+@admin_article.route('/admin/article/commentaires/<int:id_article>', methods=['GET'])
+def show_article_commentaires(id_article):
+    mycursor = get_db().cursor()
+
+    # Récupérer les informations de l'article
+    sql = '''
+    SELECT *
+    FROM cle_usb
+    WHERE id_cle_usb = %s
+    '''
+    mycursor.execute(sql, (id_article,))
+    article = mycursor.fetchone()
+
+    if article is None:
+        flash(u'Article non trouvé', 'alert-danger')
+        return redirect(url_for('admin_article.show_article'))
+
+    # Récupérer les commentaires de l'article avec le login de l'utilisateur
+    sql = '''
+    SELECT c.*, u.login
+    FROM commentaire c
+    JOIN utilisateur u ON c.utilisateur_id = u.id_utilisateur
+    WHERE c.cle_usb_id = %s
+    ORDER BY c.date_publication DESC
+    '''
+    mycursor.execute(sql, (id_article,))
+    commentaires = mycursor.fetchall()
+
+    # Vérifier que les commentaires ont bien été récupérés
+    if commentaires is None:
+        commentaires = []  # Initialiser à une liste vide si aucun commentaire n'est trouvé
+
+    # S'assurer que chaque commentaire a un champ 'valider' défini
+    for c in commentaires:
+        if 'valider' not in c or c['valider'] is None:
+            c['valider'] = 0  # Définir à 0 (non lu) par défaut si le champ est manquant ou NULL
+
+    # Calculer les statistiques
+    nb_commentaires_total = len(commentaires)
+    nb_non_valides = sum(1 for c in commentaires if c.get('valider', 0) == 0 and c['utilisateur_id'] != 1)
+    nb_valides = sum(1 for c in commentaires if c.get('valider', 0) == 1 and c['utilisateur_id'] != 1)
+    nb_admin_responses = sum(1 for c in commentaires if c['utilisateur_id'] == 1)
+
+    stats = {
+        'nb_commentaires_total': nb_commentaires_total,
+        'nb_non_valides': nb_non_valides,
+        'nb_valides': nb_valides,
+        'nb_admin_responses': nb_admin_responses
+    }
+
+    # Récupérer les réponses de l'administrateur
+    admin_responses = {}
+    for c in commentaires:
+        if c['utilisateur_id'] == 1:  # Si c'est une réponse d'admin
+            # Trouver le commentaire parent (même date ou date antérieure)
+            for parent in commentaires:
+                if parent['utilisateur_id'] != 1 and parent['date_publication'] <= c['date_publication']:
+                    timestamp = parent['date_publication'].strftime('%Y-%m-%d %H:%M:%S')
+                    admin_responses[timestamp] = c
+                    break
+
+    return render_template('admin/article/show_article_commentaires.html',
+                           article=article,
+                           commentaires=commentaires,
+                           stats=stats,
+                           admin_responses=admin_responses,
+                           id_article=id_article)
+
+
+@admin_article.route(
+    '/admin/article/commentaire/delete/<int:id_article>/<int:id_utilisateur>/<string:date_publication>',
+    methods=['GET'])
+def delete_commentaire(id_article, id_utilisateur, date_publication):
+    mycursor = get_db().cursor()
+
+    try:
+        # Convertir la date_publication de string à datetime
+        date_obj = datetime.datetime.strptime(date_publication, '%Y-%m-%d %H:%M:%S')
+
+        # Supprimer le commentaire
+        sql_delete = "DELETE FROM commentaire WHERE cle_usb_id = %s AND utilisateur_id = %s AND date_publication = %s"
+        mycursor.execute(sql_delete, (id_article, id_utilisateur, date_obj))
+        get_db().commit()
+        flash(u'Commentaire supprimé', 'alert-success')
+    except Exception as e:
+        flash(u'Erreur lors de la suppression du commentaire: ' + str(e), 'alert-danger')
+
+    return redirect(url_for('admin_article.show_article_commentaires', id_article=id_article))
+
+
+@admin_article.route(
+    '/admin/article/commentaire/valider/<int:id_article>/<int:id_utilisateur>/<string:date_publication>',
+    methods=['GET'])
+def valider_commentaire(id_article, id_utilisateur, date_publication):
+    mycursor = get_db().cursor()
+
+    try:
+        # Convertir la date_publication de string à datetime
+        date_obj = datetime.datetime.strptime(date_publication, '%Y-%m-%d %H:%M:%S')
+
+        # Valider le commentaire
+        sql_update = "UPDATE commentaire SET valider = 1 WHERE cle_usb_id = %s AND utilisateur_id = %s AND date_publication = %s"
+        mycursor.execute(sql_update, (id_article, id_utilisateur, date_obj))
+        get_db().commit()
+        flash(u'Commentaire validé', 'alert-success')
+    except Exception as e:
+        flash(u'Erreur lors de la validation du commentaire: ' + str(e), 'alert-danger')
+
+    return redirect(url_for('admin_article.show_article_commentaires', id_article=id_article))

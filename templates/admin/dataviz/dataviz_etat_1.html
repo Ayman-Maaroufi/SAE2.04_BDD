@@ -14,109 +14,293 @@
 {% endblock %}
 
 {% block title %}
-    <title>afficher les types d'article</title>
+    <title>
+        {% if mode == 'commentaires' %}
+            Statistiques des commentaires par type d'article
+        {% else %}
+            Statistiques des commentaires par article
+        {% endif %}
+    </title>
 {% endblock %}
 
 {% block body %}
 <br>
 
-    <h2> nombre d'articles :
-{#    <span style="color: red;">{{ cout_total.nbr_articles }}</span></h2>#}
+    <h2>
+        {% if mode == 'commentaires' %}
+            Statistiques des commentaires par type d'article
+        {% else %}
+            Statistiques des commentaires pour les articles de type "{{ selected_type.libelle }}"
+        {% endif %}
+    </h2>
+
+{% if mode == 'commentaires_by_type' %}
+    <div class="mb-4">
+        <a href="{{ url_for('admin_dataviz.show_dataviz_etat1') }}" class="btn btn-secondary">
+            Retour à la vue globale
+        </a>
+    </div>
+
+    <div class="mb-4">
+        <form method="get" id="typeForm" class="mb-3">
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="typeSelect">Changer de type d'article :</label>
+                    <select class="form-select" id="typeSelect">
+                        {% for type in types %}
+                            <option value="{{ type.id_type_article }}" {% if type.id_type_article == selected_type.id_type_article %}selected{% endif %}>
+                                {{ type.libelle }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <button type="button" id="changeTypeBtn" class="btn btn-primary mt-4">Changer de type</button>
+                </div>
+            </div>
+        </form>
+    </div>
+{% endif %}
 
 <table class="table">
     <thead class="thead-dark">
         <tr>
-           <th>type d'article</th> <th>(id)</th><th>nombre d'articles</th>
+           {% if mode == 'commentaires' %}
+               <th>Type d'article</th>
+               <th>ID</th>
+               <th>Nombre d'articles</th>
+           {% else %}
+               <th>Article</th>
+               <th>ID</th>
+           {% endif %}
+           <th>Nombre de commentaires</th>
+           <th>Nombre de notes</th>
+           <th>Note moyenne</th>
+           {% if mode == 'commentaires' %}
+               <th>Actions</th>
+           {% endif %}
         </tr>
     </thead>
     <tbody>
     {% if types_articles_nb | length >= 1 %}
         {% for ligne in types_articles_nb %}
            <tr>
-                  <td>{{ ligne.libelle }}</td>
-                  <td>{{ ligne.id_type_article }}</td>
-                   <td><span style="color: red">
-                       {% if ligne.nbr_articles_stock is not none %}  {{ ligne.nbr_articles }} {% else %}
-                       pas d'article {% endif %}
-                   </span></td>
-
+                <td>{{ ligne.libelle }}</td>
+                <td>
+                    {% if mode == 'commentaires' %}
+                        {{ ligne.id_type_article }}
+                    {% else %}
+                        {{ ligne.id_article }}
+                    {% endif %}
+                </td>
+                {% if mode == 'commentaires' %}
+                    <td><span style="color: red">
+                        {% if ligne.nbr_articles is not none %}  {{ ligne.nbr_articles }} {% else %}
+                        pas d'article {% endif %}
+                    </span></td>
+                {% endif %}
+                <td>{{ ligne.nb_commentaires }}</td>
+                <td>{{ ligne.nb_notes }}</td>
+                <td>
+                    {% if ligne.note_moyenne %}
+                        {{ ligne.note_moyenne }}/5
+                    {% else %}
+                        Aucune note
+                    {% endif %}
+                </td>
+                {% if mode == 'commentaires' %}
+                    <td>
+                        <a href="{{ url_for('admin_dataviz.show_dataviz_etat1_by_type', id_type=ligne.id_type_article) }}" class="btn btn-sm btn-info">
+                            Détails
+                        </a>
+                    </td>
+                {% endif %}
            </tr>
         {% endfor %}
     {% else %}
-        pas de stock
+        <tr>
+            <td colspan="6">Aucune donnée disponible</td>
+        </tr>
     {% endif %}
     </tbody>
 </table>
     <br>
-{#    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>#}
 
-<h2>visualisation de données : graph.js</h2>
-<h3>Documentation</h3>
-<br>
-    <a href="https://tobiasahlin.com/blog/chartjs-charts-to-get-you-started/" target="_blank"> tuto partie1 graph.js</a><br>
-    <a href="https://tobiasahlin.com/blog/introduction-to-chartjs" target="_blank"> tuto partie2 graph.js</a>&nbsp;
-<br>
-    <a href="https://www.youtube.com/watch?v=E2hytuQvLlE" target="_blank"> vidéo : flask + graph.js</a>&nbsp;
-    <br>
+<h2>Visualisation des données : Graphiques</h2>
 
-{# https://jinja.palletsprojects.com/en/3.0.x/templates/#html-escaping #}
-    <div style="width: 900px; height: 500px; border: #0a53be 1px solid;">
-        <canvas id="Chart1" ></canvas>
+<div class="row">
+    <div class="col-md-6">
+        <h3>
+            {% if mode == 'commentaires' %}
+                Nombre de commentaires par type d'article
+            {% else %}
+                Nombre de commentaires par article
+            {% endif %}
+        </h3>
+        <div style="width: 100%; height: 400px; border: #0a53be 1px solid;">
+            <canvas id="Chart1"></canvas>
+        </div>
     </div>
-    graphique 1
-    <script>
-	var ctx1 = document.getElementById("Chart1").getContext("2d");
-	var Chart1 = new Chart( ctx1, {
-  		type: "bar",
-  		data: {
-  			labels: {{ labels | safe }},
-  			datasets: [
-  				{
-  				label: "Type d'articles (nombre)",
-  				data: {{ values | safe }},
-  				fill: false,
-                 backgroundColor: ["#3e95cd", "#8e5ea2","#3cba9f","#e8c3b9","#c45850",
-             "#faf24c"
-             , "#6a6ce7","#55f68f","#D0c309","#c45000"],
-  				borderColor: "rgb(75,192,192)",
-  				lineTension: 0.1
-  				}
-  			]
-  		},
-  		option: {
-  			responsive: false
-  		}
-	});
-    </script>
 
+    <div class="col-md-6">
+        <h3>
+            {% if mode == 'commentaires' %}
+                Répartition des commentaires par type d'article
+            {% else %}
+                Répartition des commentaires par article
+            {% endif %}
+        </h3>
+        <canvas id="pie-chart" width="100%" height="400"></canvas>
+    </div>
+</div>
 
-    <h2>demo graphique à secteurs : "camenberd" ,"donut" ( "pie-chart"  "doughtnut")</h2>
+<div class="row mt-4">
+    <div class="col-md-6">
+        <h3>
+            {% if mode == 'commentaires' %}
+                Note moyenne par type d'article
+            {% else %}
+                Note moyenne par article
+            {% endif %}
+        </h3>
+        <div style="width: 100%; height: 400px; border: #0a53be 1px solid;">
+            <canvas id="Chart2"></canvas>
+        </div>
+    </div>
 
-    <canvas id="pie-chart" width="800" height="450"></canvas>
+    <div class="col-md-6">
+        <h3>
+            {% if mode == 'commentaires' %}
+                Nombre de notes par type d'article
+            {% else %}
+                Nombre de notes par article
+            {% endif %}
+        </h3>
+        <div style="width: 100%; height: 400px; border: #0a53be 1px solid;">
+            <canvas id="Chart3"></canvas>
+        </div>
+    </div>
+</div>
 
-    <script>
-	var Chart2 = new Chart(document.getElementById("pie-chart"), {
-    type: 'pie',
-    data: {
-      labels: {{ labels | safe }},
-      datasets: [{
-        label: "Type d'articles (nombre)",
-         backgroundColor: ["#3e95cd", "#8e5ea2","#3cba9f","#e8c3b9","#c45850",
-             "#faf24c"
-             , "#6a6ce7","#55f68f","#D0c309","#c45000"],
-        data: {{ values | safe }},
-      }]
-    },
-    options: {
-      title: {
-        display: true,
-        text: 'Type article : nombre'
-      }
-     }
+<script>
+    // Graphique 1 : Nombre de commentaires
+    var ctx1 = document.getElementById("Chart1").getContext("2d");
+    var Chart1 = new Chart(ctx1, {
+        type: "bar",
+        data: {
+            labels: {{ labels | safe }},
+            datasets: [
+                {
+                label: "Nombre de commentaires",
+                data: {{ values | safe }},
+                fill: false,
+                backgroundColor: ["#3e95cd", "#8e5ea2","#3cba9f","#e8c3b9","#c45850",
+                "#faf24c", "#6a6ce7","#55f68f","#D0c309","#c45000"],
+                borderColor: "rgb(75,192,192)",
+                lineTension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true
+                    }
+                }]
+            }
+        }
     });
-    </script>
 
-    <a href="https://www.youtube.com/watch?v=TcwYXIIM-fs" target="_blank">dataviz, c'est quoi en 1 mn ? (juste la première minute)</a>
-    <br>
-    <a href="https://www.youtube.com/watch?v=bZDnSUjfMt8" target="_blank">dataviz, c'est quoi ? (juste la première minute)</a>
+    // Graphique 2 : Note moyenne
+    var ctx2 = document.getElementById("Chart2").getContext("2d");
+    var Chart2 = new Chart(ctx2, {
+        type: "bar",
+        data: {
+            labels: {{ labels | safe }},
+            datasets: [
+                {
+                label: "Note moyenne /5",
+                data: {{ notes_moyennes | safe }},
+                fill: false,
+                backgroundColor: ["#3e95cd", "#8e5ea2","#3cba9f","#e8c3b9","#c45850",
+                "#faf24c", "#6a6ce7","#55f68f","#D0c309","#c45000"],
+                borderColor: "rgb(75,192,192)",
+                lineTension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true,
+                        max: 5
+                    }
+                }]
+            }
+        }
+    });
+
+    // Graphique 3 : Nombre de notes
+    var ctx3 = document.getElementById("Chart3").getContext("2d");
+    var Chart3 = new Chart(ctx3, {
+        type: "bar",
+        data: {
+            labels: {{ labels | safe }},
+            datasets: [
+                {
+                label: "Nombre de notes",
+                data: {{ nb_notes | safe }},
+                fill: false,
+                backgroundColor: ["#3e95cd", "#8e5ea2","#3cba9f","#e8c3b9","#c45850",
+                "#faf24c", "#6a6ce7","#55f68f","#D0c309","#c45000"],
+                borderColor: "rgb(75,192,192)",
+                lineTension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true
+                    }
+                }]
+            }
+        }
+    });
+
+    // Graphique en camembert : Nombre de commentaires
+    var pieChart = new Chart(document.getElementById("pie-chart"), {
+        type: 'pie',
+        data: {
+            labels: {{ labels | safe }},
+            datasets: [{
+                label: "Nombre de commentaires",
+                backgroundColor: ["#3e95cd", "#8e5ea2","#3cba9f","#e8c3b9","#c45850",
+                    "#faf24c", "#6a6ce7","#55f68f","#D0c309","#c45000"],
+                data: {{ values | safe }},
+            }]
+        },
+        options: {
+            title: {
+                display: true,
+                text: 'Répartition des commentaires'
+            },
+            responsive: true
+        }
+    });
+
+    // Gestion du changement de type
+    {% if mode == 'commentaires_by_type' %}
+    document.getElementById('changeTypeBtn').addEventListener('click', function() {
+        const typeId = document.getElementById('typeSelect').value;
+        window.location.href = "{{ url_for('admin_dataviz.show_dataviz_etat1_by_type', id_type=0) }}".replace('0', typeId);
+    });
+    {% endif %}
+</script>
 {% endblock %}

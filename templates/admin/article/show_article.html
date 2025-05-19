@@ -12,7 +12,7 @@
     <thead class="thead-dark">
         <tr>
             <th>nom</th><th>id</th><th>type article (id)</th><th>prix</th><th style="color: green">stock</th>
-            <th>nouveaux avis</th><th>nb déclinaisons</th><th>image</th><th>opération</th>
+            <th>commentaires</th><th>nb déclinaisons</th><th>image</th><th>opération</th>
         </tr>
     </thead>
     <tbody>
@@ -39,11 +39,17 @@
                   {% endif %}
                   </td>
                    <td>
-                  {% if ligne.nb_commentaires_nouveaux is defined %}
-                     {% if ligne.nb_commentaires_nouveaux > 0 %}
-                         <a href="{{ url_for('admin_article.show_commentaires', id_article=ligne.id_article) }}"><strong style="color: red">{{ ligne.nb_commentaires_nouveaux }} avis non lu(s) ⚠️ </strong></a>
+                  {% if ligne.nb_commentaires_total is defined %}
+                     {% if ligne.nb_commentaires_total > 0 %}
+                         <a href="{{ url_for('admin_article.show_commentaires', id_article=ligne.id_article) }}">
+                             <strong>Total: {{ ligne.nb_commentaires_total }}</strong>
+                             {% if ligne.nb_commentaires_nouveaux > 0 %}
+                                 <br><strong style="color: red">{{ ligne.nb_commentaires_nouveaux }} non lu(s) ⚠️</strong>
+                             {% endif %}
+                             <br><strong style="color: green">{{ ligne.nb_commentaires_total - ligne.nb_commentaires_nouveaux }} lu(s)</strong>
+                         </a>
                      {% else %}
-                        <strong class="text-muted"></strong>
+                        <strong class="text-muted">Aucun commentaire</strong>
                      {% endif %}
                   {% else %}
                       nb_avis ND
@@ -66,7 +72,7 @@
                   <td>
                       <a  class="btn btn-outline-danger" href="{{ url_for('admin_article.delete_article', id_article=ligne.id_article) }}" onclick="return confirm('Are you sure?')" >supprimer</a>
                       <a  class="btn btn-outline-warning" href="{{ url_for('admin_article.edit_article', id_article=ligne.id_article) }}">editer</a>
-                      <a  class="btn btn-outline-warning" href="{{ url_for('admin_article.show_commentaires', id_article=ligne.id_article) }}">commentaires</a>
+                      <a  class="btn btn-outline-warning" href="{{ url_for('admin_article.show_article_commentaires', id_article=ligne.id_article) }}">commentaires</a>
                   </td>
            </tr>
         {% endfor %}

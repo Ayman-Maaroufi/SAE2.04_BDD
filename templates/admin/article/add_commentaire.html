@@ -1,27 +1,42 @@
 {% extends 'admin/layout_admin.html' %}
 
 {% block title %}
-    <title>commentaire d'un article</title>
+    <title>Répondre à un commentaire</title>
 {% endblock %}
 
 {% block body %}
-<h3>article</h3>
-   <div class="row">
-            <div class="col-5 bg-light p-3">
-        <h3>répondre à un commentaire</h3>
+    <div class="container">
+        <h2>Répondre au commentaire</h2>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Article: {{ article.nom }}</h5>
             </div>
-                 <form  action="/admin/article/commentaires/repondre"  style="display: inline-block;"  method="post" >
-                      <input type="hidden" name="id_article" value="{{ id_article }}">
-                      <input type="hidden" name="id_utilisateur" value="{{ id_utilisateur }}">
-                      <input type="hidden" name="date_publication" value="{{ date_publication }}">
-                      <div class="col">
-                       <label for="input_commentaire" class="form-label">Mettez un commentaire sur cet article : </label>
-                      <textarea name="commentaire" class="form-control" aria-label="Votre commentaire" id="input_commentaire"  placeholder="Votre commentaire"></textarea>
-                      </div>
-                      <button class="btn btn-primary mt-4 mb-4" href="/admin/article/commentaires/repondre"> répondre </button>
-                 </form>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>{{ commentaire.login }}</strong> a écrit le {{ commentaire.date_publication.strftime('%d/%m/%Y à %H:%M') }}:
+                    <p class="mt-2">{{ commentaire.commentaire }}</p>
+                    {% if commentaire.note %}
+                        <span class="badge bg-info">Note: {{ commentaire.note }}/5</span>
+                    {% endif %}
+                </div>
 
-        <a class="btn btn-outline-primary btn-lg" href="/admin/article/show">Retour vers la page d'accueil</a>
+                <form action="{{ url_for('admin_commentaire.valid_comment_add') }}" method="post">
+                    <input type="hidden" name="id_utilisateur" value="{{ id_utilisateur }}">
+                    <input type="hidden" name="id_article" value="{{ id_article }}">
+                    <input type="hidden" name="date_publication" value="{{ date_publication }}">
+
+                    <div class="form-group">
+                        <label for="commentaire">Votre réponse:</label>
+                        <textarea class="form-control" id="commentaire" name="commentaire" rows="5" required></textarea>
+                    </div>
+
+                    <div class="mt-3">
+                        <button type="submit" class="btn btn-primary">Envoyer la réponse</button>
+                        <a href="{{ url_for('admin_article.show_article_commentaires', id_article=id_article) }}" class="btn btn-outline-secondary">Annuler</a>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
-
 {% endblock %}
